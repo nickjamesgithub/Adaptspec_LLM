@@ -20,7 +20,7 @@ df = df[df["Date"] >= pd.Timestamp("2005-01-01")].reset_index(drop=True)
 log_returns = np.diff(np.log(df["Price"].values))
 dates = df["Date"].values[1:]
 
-result  = adaptspec(log_returns, nexp_max=20, nbeta=20, niter=10000, nburn=5000, tmin=90, seed=42, verbose=True)
+result  = adaptspec(log_returns, nexp_max=20, nbeta=20, niter=10000, nburn=5000, tmin=120, seed=42, verbose=True)
 summary = summarise(result)
 
 changepoints = [b[1] for b in summary["segment_boundaries"][:-1]]
