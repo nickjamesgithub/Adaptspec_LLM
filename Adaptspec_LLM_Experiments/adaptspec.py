@@ -7,7 +7,6 @@ Key fixes vs original:
   4. within() nposs=3 case uses -2+new_index (not -1+new_index)
   5. birth() xi_prop for seg_cut>0: uses xi_curr[jj-1]-1+tmin+index (matches R exactly)
 """
-
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
@@ -496,7 +495,7 @@ def adaptspec(x, nexp_max=10, nbeta=7, niter=5000, nburn=2000, tmin=40,
     )
 
 
-def summarise(result):
+def summarise(result, nfreq_hat=50):
     nobs = result.nobs; S = len(result.nexp_samples)
     mean_nexp = result.nexp_samples.mean()
     vals, counts = np.unique(result.nexp_samples, return_counts=True)
@@ -519,6 +518,36 @@ def summarise(result):
         for t in best_xi: boundaries.append((prev, t)); prev = t
     else:
         boundaries = [(0, nobs)]
+
+    # Posterior mean log-PSD per segment (for 2D spectrum plot)
+    freq_hat = np.arange(nfreq_hat + 1) / (2 * nfreq_hat)
+    nu_mat_hat = _lin_basis_func(freq_hat, result.nbeta)
+    log_spec_hat = []
+    for seg_idx in range(modal_nexp):
+        specs = []
+        for i, beta in enumerate(result.beta_samples):
+            if result.nexp_samples[i] == modal_nexp:
+                b = beta[:, seg_idx] if beta.ndim == 2 else beta.ravel()
+                specs.append(nu_mat_hat @ b)
+        log_spec_hat.append(np.mean(specs, axis=0) if specs else np.zeros(nfreq_hat + 1))
+
+    # Time-varying PSD: (nobs, nfreq_hat+1) — average nu_mat@beta across all samples, per time point
+    tvpsd = np.zeros((nobs, nfreq_hat + 1))
+    counts_t = np.zeros(nobs)
+    for i, (beta, xi) in enumerate(zip(result.beta_samples, result.xi_samples)):
+        nexp_i = result.nexp_samples[i]
+        prev = 0
+        for seg_idx in range(nexp_i):
+            end = xi[seg_idx]
+            b = beta[:, seg_idx] if beta.ndim == 2 else beta.ravel()
+            spec = nu_mat_hat @ b
+            tvpsd[prev:end] += spec
+            counts_t[prev:end] += 1
+            prev = end
+    counts_t = np.maximum(counts_t, 1)
+    tvpsd /= counts_t[:, np.newaxis]
+
     return dict(mean_nexp=mean_nexp, nexp_probs=nexp_probs,
                 changepoint_proba=changepoint_proba, modal_changepoints=modal_cps,
-                segment_boundaries=boundaries, modal_nexp=modal_nexp)
+                segment_boundaries=boundaries, modal_nexp=modal_nexp,
+                log_spec_hat=log_spec_hat, freq_hat=freq_hat, tvpsd=tvpsd)
